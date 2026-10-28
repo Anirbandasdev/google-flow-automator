@@ -16,6 +16,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   html { -webkit-text-size-adjust: 100%; }
+  [hidden] { display: none !important; }
   body { overflow-x: hidden; }
   header { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
   header h1 { font-size: 16px; margin: 0; font-weight: 650; white-space: nowrap; }
@@ -70,7 +71,9 @@
   .job-name { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 80px; }
   .job-btns { display: flex; gap: 6px; margin-left: auto; }
   .job-btns button { padding: 4px 10px; font-size: 13px; }
-  .prompt { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .prompt { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; cursor: pointer; }
+  .prompt.open { display: block; -webkit-line-clamp: unset; line-clamp: none; }
   .status { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--chip); white-space: nowrap; }
   .status.running { color: var(--accent); } .status.done { color: var(--ok); } .status.failed { color: var(--bad); }
   .note { font-size: 12px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
@@ -81,16 +84,29 @@
   pre.log { margin: 0; max-height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
   .counts { display: flex; gap: 8px; flex-wrap: wrap; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  .offline { display: grid; gap: 4px; margin: 16px 20px 0; padding: 12px 14px; border: 1px solid var(--bad); border-radius: 10px;
+    background: color-mix(in srgb, var(--bad) 10%, var(--panel)); max-width: 1360px; }
+  @media (min-width: 1400px) { .offline { margin: 16px auto 0; } }
+  @media (max-width: 860px) { .offline { margin: 12px 16px 0; } }
+  .offline a { color: var(--accent); font-weight: 600; }
+  .def { color: var(--muted); opacity: .8; font-size: 11px; }
+  label:not(.check) > .def { display: block; margin-top: 1px; }
+  body.offline-mode main { opacity: .55; pointer-events: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>Flow Automator</h1>
-  <span class="badge" id="flowBadge"><span class="dot"></span><span>Checking…</span></span>
-  <span class="badge" id="todayBadge"></span>
+  <span class="badge" id="flowBadge"><span class="dot"></span><span>Connecting…</span></span>
+  <span class="badge" id="todayBadge" hidden></span>
   <span class="spacer"></span>
   <button id="openDownloads">Open clips folder</button>
 </header>
+
+<div id="offline" class="offline" hidden>
+  <b>Flow Automator isn't running.</b>
+  <span>Ask Claude "Set up Flow Automator", or double-click <code>start.cmd</code> in the Flow Automator folder. Then <a href="http://localhost:3777/">open the live page</a>; this page also connects by itself once it's running.</span>
+</div>
 
 <main>
   <div class="stack" id="side">
@@ -98,9 +114,9 @@
       <h2>Get ready</h2>
       <div class="hint" style="margin:0 0 10px">You can also do all of this by asking Claude: "Set up Flow Automator".</div>
       <div class="steps">
-        <div class="step"><span id="s1"></span><button id="openChrome">Open Chrome</button></div>
-        <div class="step"><span id="s2"></span><button id="checkFlow">Check again</button></div>
-        <div class="step"><span id="s3"></span><button id="useProject">Use open project</button></div>
+        <div class="step"><span id="s1"><span class="dot"></span>1. Open the Flow Chrome window</span><button id="openChrome">Open Chrome</button></div>
+        <div class="step"><span id="s2"><span class="dot"></span>2. Sign in to Flow in that window</span><button id="checkFlow">Check again</button></div>
+        <div class="step"><span id="s3"><span class="dot"></span>3. Open a Flow project, then use it</span><button id="useProject">Use open project</button></div>
       </div>
     </section>
 
@@ -144,7 +160,7 @@
       <label class="check"><input type="checkbox" id="stopOnFailure"> Stop the batch when a clip fails</label>
       <label for="projectUrl">Flow project</label>
       <input id="projectUrl" placeholder="https://flow.google.com/project/…">
-      <div class="actions"><button class="primary" id="saveSettings">Save settings</button><button id="resetSettings">Starting values</button></div>
+      <div class="actions"><button class="primary" id="saveSettings">Save settings</button><button id="resetSettings">Reset to defaults</button></div>
       <div class="hint" id="settingsHint"></div>
     </section>
   </div>
@@ -177,7 +193,25 @@ const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Typ
 const base = p => String(p || '').split(/[\\/]/).pop();
 const FIELDS = ['model', 'aspect', 'duration', 'resolution', 'gapSeconds', 'gapJitterSeconds', 'dailyLimit', 'maxCreditsPerJob', 'timeoutMinutes', 'projectUrl'];
 const CHECKS = ['autoStart', 'stopOnFailure'];
-let settingsLoaded = false, last = null;
+// Default settings (same as the server's); shown before the server answers, and next to each field
+let DEFAULTS = { model: 'Omni 1.1 Flash', aspect: '9:16', resolution: '720p', duration: 4, maxCreditsPerJob: 20, gapSeconds: 150,
+  gapJitterSeconds: 90, dailyLimit: 15, autoStart: false, stopOnFailure: true, timeoutMinutes: 10, projectUrl: '' };
+let settingsLoaded = false, last = null, jobsSig = '';
+const openPrompts = new Set(); // prompts the person expanded stay expanded across live updates
+function togglePrompt(id, el) { el.classList.toggle('open') ? openPrompts.add(id) : openPrompts.delete(id); }
+
+function showDefaults() {
+  for (const k of [...FIELDS, ...CHECKS]) {
+    const el = $(k), lab = el && (el.closest('label') || document.querySelector(`label[for="${k}"]`));
+    if (!lab || k === 'projectUrl') continue;
+    let tag = lab.querySelector('.def');
+    if (!tag) { tag = document.createElement('span'); tag.className = 'def'; lab.appendChild(tag); }
+    const v = DEFAULTS[k];
+    const val = typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v);
+    tag.textContent = lab.classList.contains('check') ? ` · default ${val}` : `Default: ${val}`;
+    if (el.type !== 'checkbox' && el.tagName === 'INPUT') el.placeholder = String(v);
+  }
+}
 
 function step(ok, warn, text) { return `<span class="dot ${ok ? 'ok' : warn ? 'warn' : 'bad'}"></span>${esc(text)}`; }
 
@@ -192,6 +226,7 @@ function render(s) {
   const [cls, txt] = !f.chrome ? ['bad', 'Chrome not open'] : !f.signedIn ? ['warn', 'Not signed in to Flow'] : ['ok', 'Flow connected'];
   $('flowBadge').innerHTML = `<span class="dot ${cls}"></span><span>${txt}</span>`;
   $('todayBadge').textContent = `Today: ${s.today.started}${s.today.limit ? ` of ${s.today.limit}` : ''} clips`;
+  $('todayBadge').hidden = false;
 
   $('s1').innerHTML = step(f.chrome, false, !s.chromeFound ? '1. Install Google Chrome' : f.chrome ? '1. Chrome is open' : '1. Open the Flow Chrome window');
   $('s2').innerHTML = step(f.signedIn, f.chrome, f.signedIn ? '2. Signed in to Flow' : '2. Sign in to Flow in that window');
@@ -207,7 +242,33 @@ function render(s) {
   s.jobs.forEach(j => c[j.status] = (c[j.status] || 0) + 1);
   $('counts').innerHTML = Object.entries(c).map(([k, v]) => `<span class="badge">${k} ${v}</span>`).join('');
 
-  $('jobs').innerHTML = s.jobs.length ? s.jobs.slice().reverse().map(j => `
+  // redraw the list only when the jobs change, so previews don't reload on every live update
+  const sig = JSON.stringify(s.jobs.map(j => [j.id, j.status, j.note, j.files, j.missing]));
+  if (sig !== jobsSig) { jobsSig = sig; renderJobs(s.jobs); }
+
+  const log = $('log'); const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 10;
+  log.textContent = s.log.join('\n'); if (atBottom) log.scrollTop = log.scrollHeight;
+
+  if (s.defaults && JSON.stringify(s.defaults) !== JSON.stringify(DEFAULTS)) { DEFAULTS = s.defaults; showDefaults(); }
+  if (!settingsLoaded) { fillSettings(s.settings); settingsLoaded = true; }
+}
+
+// previews load only when scrolled into view
+const lazy = new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting) { e.target.src = e.target.dataset.src; lazy.unobserve(e.target); }
+}, { rootMargin: '300px' });
+
+function clipsHtml(j) {
+  if (!j.files?.length) return '';
+  const missing = new Set(j.missing || []);
+  const here = j.files.filter(f => !missing.has(f));
+  const gone = j.files.filter(f => missing.has(f));
+  return `${here.length ? `<div class="clips">${here.map(f => `<a href="/downloads/${encodeURIComponent(f)}" target="_blank"><video data-src="/downloads/${encodeURIComponent(f)}#t=0.1" preload="metadata" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()"></video></a>`).join('')}</div>` : ''}
+    ${gone.length ? `<div class="note">${gone.map(esc).join(', ')}: moved or deleted from the clips folder</div>` : ''}`;
+}
+
+function renderJobs(jobs) {
+  $('jobs').innerHTML = jobs.length ? jobs.slice().reverse().map(j => `
     <div class="job">
       <div class="job-top">
         <span class="job-id">#${j.id}</span>
@@ -218,19 +279,33 @@ function render(s) {
           ${j.status !== 'running' ? `<button class="danger" title="Remove" aria-label="Remove clip ${j.id}" onclick="fetch('/api/jobs/${j.id}',{method:'DELETE'})">✕</button>` : ''}
         </span>
       </div>
-      <div class="prompt">${esc(j.prompt)}</div>
+      <div class="prompt${openPrompts.has(j.id) ? ' open' : ''}" title="Tap to show all" onclick="togglePrompt(${j.id}, this)">${esc(j.prompt)}</div>
       ${(j.refs || []).length ? `<div class="refs">References: ${j.refs.map(r => esc(base(r))).join(', ')}</div>` : ''}
       ${j.note ? `<div class="note">${esc(j.note)}</div>` : ''}
-      ${j.files?.length ? `<div class="clips">${j.files.map(f => `<a href="/downloads/${encodeURIComponent(f)}" target="_blank"><video src="/downloads/${encodeURIComponent(f)}" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()"></video></a>`).join('')}</div>` : ''}
+      ${clipsHtml(j)}
     </div>`).join('') : '<div class="empty">Nothing queued yet. Ask Claude to make clips, or add them here.</div>';
-
-  const log = $('log'); const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 10;
-  log.textContent = s.log.join('\n'); if (atBottom) log.scrollTop = log.scrollHeight;
-
-  if (!settingsLoaded) { fillSettings(s.settings); settingsLoaded = true; }
+  for (const v of $('jobs').querySelectorAll('video[data-src]')) lazy.observe(v);
 }
 
-new EventSource('/api/events').onmessage = e => render(JSON.parse(e.data));
+fillSettings(DEFAULTS); showDefaults();
+
+// Live updates from the server; shows "not running" while it can't be reached and reconnects by itself.
+const APP = 'http://localhost:3777/';
+function setOffline(off) {
+  $('offline').hidden = !off;
+  document.body.classList.toggle('offline-mode', off);
+  if (off) { $('flowBadge').innerHTML = '<span class="dot bad"></span><span>Not running</span>'; $('todayBadge').hidden = true; }
+}
+if (!/^https?:$/.test(location.protocol)) {
+  // opened as a file or a preview (file:, data:), not through the server: go to the live page once the server answers
+  setOffline(true);
+  const tryApp = () => fetch(APP + 'api/state', { mode: 'no-cors', cache: 'no-store' }).then(() => location.replace(APP)).catch(() => setTimeout(tryApp, 3000));
+  tryApp();
+} else {
+  const es = new EventSource('/api/events');
+  es.onmessage = e => { setOffline(false); render(JSON.parse(e.data)); };
+  es.onerror = () => setOffline(true); // EventSource retries by itself
+}
 setInterval(() => last && last.waitingUntil && render(last), 1000);
 
 $('addJobs').onclick = async () => {

@@ -70,8 +70,11 @@ function addLog(msg) {
 
 // ---------- server-sent events ----------
 const clients = new Set();
+// Finished clips are often moved out of downloads/ into ad projects; mark those so nothing tries to load them.
+const withMissing = j => (j.files && j.files.length
+  ? { ...j, missing: j.files.filter(f => !fs.existsSync(path.join(DOWNLOADS, f))) } : j);
 function snapshot() {
-  return { jobs: state.jobs, settings: state.settings, defaults: DEFAULT_SETTINGS, running, haltReason, waitingUntil,
+  return { jobs: state.jobs.map(withMissing), settings: state.settings, defaults: DEFAULT_SETTINGS, running, haltReason, waitingUntil,
     today: { started: startedToday(), limit: state.settings.dailyLimit }, chromeFound: !!findChrome(),
     downloadsDir: DOWNLOADS, log: log.slice(-80), flow: flow.status() };
 }

@@ -63,7 +63,8 @@ const summary = j => ({
   id: j.id, name: j.name || null, batch: j.batch, status: j.status, note: j.note || null,
   prompt: j.prompt.length > 140 ? `${j.prompt.slice(0, 140)}…` : j.prompt,
   references: (j.refs || []).map(r => path.basename(r)),
-  files: (j.files || []).map(f => path.join(j.downloadsDir || '', f)),
+  files: (j.files || []).filter(f => !(j.missing || []).includes(f)).map(f => path.join(j.downloadsDir || '', f)),
+  ...((j.missing || []).length && { movedOrDeleted: j.missing }),
 });
 
 function nextSteps(st) {
