@@ -31,8 +31,10 @@ try {
 
 // Claude Code, if installed
 try {
-  const claude = process.platform === 'win32' ? 'claude.cmd' : 'claude';
-  const run = args => execFileSync(claude, args, { stdio: 'pipe', shell: process.platform === 'win32' });
+  // through the shell, so Windows finds claude.exe or claude.cmd, whichever the installer made
+  const q = s => (/\s/.test(s) ? `"${s}"` : s);
+  const run = args => execFileSync('claude', args.map(q), { stdio: 'pipe', shell: true });
+  run(['--version']);
   try { run(['mcp', 'remove', '--scope', 'user', NAME]); } catch { /* wasn't there */ }
   run(['mcp', 'add', '--scope', 'user', NAME, '--', process.execPath, SERVER]);
   done.push('Claude Code: added');
