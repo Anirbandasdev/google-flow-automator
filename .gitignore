@@ -1,0 +1,10 @@
+node_modules/
+# your Google sign-in lives here: never share it
+chrome-profile/
+data/
+downloads/
+uploads/
+references/*
+!references/.gitkeep
+*.bak*
+*.log

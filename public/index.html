@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Automator</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1b1c1e; --muted: #6b6f76; --line: #e3e3df;
+    --accent: #2f6fed; --accent-ink: #ffffff; --ok: #1f8a4c; --warn: #b26a00; --bad: #c43838; --chip: #efefec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #131417; --panel: #1c1d21; --ink: #ececea; --muted: #9a9ea6; --line: #2c2e33;
+      --accent: #5b8cff; --accent-ink: #0d0f14; --ok: #45c07a; --warn: #e0a040; --bad: #ff6b6b; --chip: #26282d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { overflow-x: hidden; }
+  header { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; white-space: nowrap; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; background: var(--chip); font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+  .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+  main > * { min-width: 0; }
+  /* Narrow (Claude's browser pane, phones): one column, queue on top since that's what you watch */
+  @media (max-width: 860px) {
+    main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px; gap: 12px; }
+    #side { order: 2; } #queueCol { order: 1; }
+    header { padding: 10px 16px; }
+    .stack > * + * { margin-top: 12px; }
+  }
+  @media (max-width: 480px) {
+    header .badge#todayBadge { display: none; }
+    section { padding: 12px; }
+    .toolbar button { padding: 6px 10px; font-size: 13px; }
+  }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  textarea, input, select { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; font: inherit; }
+  textarea { min-height: 160px; resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
+  .row > * { min-width: 0; }
+  input, select, textarea { min-width: 0; max-width: 100%; }
+  code { word-break: break-all; }
+  .check { display: flex; gap: 8px; align-items: center; color: var(--ink); font-size: 13px; margin-top: 10px; }
+  .check input { width: auto; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink); border-radius: 7px; padding: 7px 12px; cursor: pointer; }
+  button:hover { filter: brightness(.97); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  button.danger { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .halt { background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border: 1px solid var(--warn); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .steps { display: grid; gap: 8px; }
+  .step { display: flex; gap: 8px 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .step span { display: flex; gap: 8px; align-items: center; min-width: 0; }
+  .stack > * + * { margin-top: 16px; }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toolbar h2 { margin: 0; }
+  /* jobs as cards: readable at any width */
+  .jobs { display: grid; gap: 8px; margin-top: 10px; }
+  .job { border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; }
+  .job-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .job-id { font-weight: 650; }
+  .job-name { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 80px; }
+  .job-btns { display: flex; gap: 6px; margin-left: auto; }
+  .job-btns button { padding: 4px 10px; font-size: 13px; }
+  .prompt { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .status { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--chip); white-space: nowrap; }
+  .status.running { color: var(--accent); } .status.done { color: var(--ok); } .status.failed { color: var(--bad); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+  .clips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .clips video { width: 96px; max-width: 30vw; border-radius: 6px; background: #000; display: block; }
+  .refs { font-size: 12px; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+  .empty { color: var(--muted); font-size: 13px; padding: 14px 4px; }
+  pre.log { margin: 0; max-height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .counts { display: flex; gap: 8px; flex-wrap: wrap; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Flow Automator</h1>
+  <span class="badge" id="flowBadge"><span class="dot"></span><span>Checking…</span></span>
+  <span class="badge" id="todayBadge"></span>
+  <span class="spacer"></span>
+  <button id="openDownloads">Open clips folder</button>
+</header>
+
+<main>
+  <div class="stack" id="side">
+    <section>
+      <h2>Get ready</h2>
+      <div class="hint" style="margin:0 0 10px">You can also do all of this by asking Claude: "Set up Flow Automator".</div>
+      <div class="steps">
+        <div class="step"><span id="s1"></span><button id="openChrome">Open Chrome</button></div>
+        <div class="step"><span id="s2"></span><button id="checkFlow">Check again</button></div>
+        <div class="step"><span id="s3"></span><button id="useProject">Use open project</button></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Add clips</h2>
+      <label for="batch">Batch name</label>
+      <input id="batch" placeholder="e.g. summer-ad-1">
+      <label for="prompts">Prompts: separate clips with a line containing only <code>---</code></label>
+      <textarea id="prompts" placeholder="A woman in her 60s sits on the edge of the bed at night, rubbing her calf…&#10;---&#10;Close-up of a hand opening a small bottle on a kitchen counter, morning light…"></textarea>
+      <label class="check"><input type="checkbox" id="splitLines"> One prompt per line instead</label>
+      <label for="images">References for these clips (up to 3: photos, and at most one video)</label>
+      <input type="file" id="images" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" multiple>
+      <div class="hint">A video makes Flow edit that video (the clip takes its length). Photos guide the person, product and place.</div>
+      <div class="actions"><button class="primary" id="addJobs">Add to queue</button></div>
+      <div class="hint" id="addHint"></div>
+    </section>
+
+    <section>
+      <h2>Settings</h2>
+      <div class="row">
+        <div><label for="model">Model (as Flow names it)</label><input id="model"></div>
+        <div><label for="aspect">Shape</label><select id="aspect"><option value="9:16">9:16 vertical</option><option value="16:9">16:9 wide</option></select></div>
+      </div>
+      <div class="row">
+        <div><label for="duration">Length (seconds)</label><input id="duration" type="number" min="1"></div>
+        <div><label for="resolution">Resolution</label><select id="resolution"><option>720p</option><option>1080p</option></select></div>
+      </div>
+      <div class="row">
+        <div><label for="gapSeconds">Cooldown between clips (s)</label><input id="gapSeconds" type="number" min="0"></div>
+        <div><label for="gapJitterSeconds">+ random extra up to (s)</label><input id="gapJitterSeconds" type="number" min="0"></div>
+      </div>
+      <div class="row">
+        <div><label for="dailyLimit">Clips per day (0 = no limit)</label><input id="dailyLimit" type="number" min="0"></div>
+        <div><label for="maxCreditsPerJob">Max credits per clip</label><input id="maxCreditsPerJob" type="number" min="1"></div>
+      </div>
+      <div class="row">
+        <div><label for="timeoutMinutes">Give up after (min)</label><input id="timeoutMinutes" type="number" min="1"></div>
+        <div></div>
+      </div>
+      <label class="check"><input type="checkbox" id="autoStart"> Start by itself when Claude adds clips</label>
+      <label class="check"><input type="checkbox" id="stopOnFailure"> Stop the batch when a clip fails</label>
+      <label for="projectUrl">Flow project</label>
+      <input id="projectUrl" placeholder="https://flow.google.com/project/…">
+      <div class="actions"><button class="primary" id="saveSettings">Save settings</button><button id="resetSettings">Starting values</button></div>
+      <div class="hint" id="settingsHint"></div>
+    </section>
+  </div>
+
+  <div class="stack" id="queueCol">
+    <section>
+      <div id="halt"></div>
+      <div class="toolbar">
+        <h2>Queue</h2>
+        <div class="counts" id="counts"></div>
+      </div>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="primary" id="start">Start</button>
+        <button id="skip" hidden>Skip cooldown</button>
+        <button id="stop">Stop after current</button>
+        <button id="clearDone">Clear done</button>
+      </div>
+      <div class="jobs" id="jobs"><div class="empty">Nothing queued yet.</div></div>
+    </section>
+    <section>
+      <details><summary>Activity log</summary><pre class="log" id="log" style="margin-top:8px"></pre></details>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then(r => r.json());
+const base = p => String(p || '').split(/[\\/]/).pop();
+const FIELDS = ['model', 'aspect', 'duration', 'resolution', 'gapSeconds', 'gapJitterSeconds', 'dailyLimit', 'maxCreditsPerJob', 'timeoutMinutes', 'projectUrl'];
+const CHECKS = ['autoStart', 'stopOnFailure'];
+let settingsLoaded = false, last = null;
+
+function step(ok, warn, text) { return `<span class="dot ${ok ? 'ok' : warn ? 'warn' : 'bad'}"></span>${esc(text)}`; }
+
+function fillSettings(st) {
+  for (const k of FIELDS) $(k).value = st[k] ?? '';
+  for (const k of CHECKS) $(k).checked = !!st[k];
+}
+
+function render(s) {
+  last = s;
+  const f = s.flow || {};
+  const [cls, txt] = !f.chrome ? ['bad', 'Chrome not open'] : !f.signedIn ? ['warn', 'Not signed in to Flow'] : ['ok', 'Flow connected'];
+  $('flowBadge').innerHTML = `<span class="dot ${cls}"></span><span>${txt}</span>`;
+  $('todayBadge').textContent = `Today: ${s.today.started}${s.today.limit ? ` of ${s.today.limit}` : ''} clips`;
+
+  $('s1').innerHTML = step(f.chrome, false, !s.chromeFound ? '1. Install Google Chrome' : f.chrome ? '1. Chrome is open' : '1. Open the Flow Chrome window');
+  $('s2').innerHTML = step(f.signedIn, f.chrome, f.signedIn ? '2. Signed in to Flow' : '2. Sign in to Flow in that window');
+  $('s3').innerHTML = step(!!s.settings.projectUrl, false, s.settings.projectUrl ? '3. Project chosen' : '3. Open a Flow project, then use it');
+
+  const wait = s.waitingUntil ? Math.max(0, Math.round((s.waitingUntil - Date.now()) / 1000)) : 0;
+  $('halt').innerHTML = s.haltReason ? `<div class="halt"><b>Paused:</b> ${esc(s.haltReason)}</div>` : '';
+  $('start').disabled = s.running; $('stop').disabled = !s.running;
+  $('start').textContent = s.running ? (wait ? `Cooldown ${wait}s` : 'Running…') : 'Start';
+  $('skip').hidden = !wait;
+
+  const c = { queued: 0, running: 0, done: 0, failed: 0 };
+  s.jobs.forEach(j => c[j.status] = (c[j.status] || 0) + 1);
+  $('counts').innerHTML = Object.entries(c).map(([k, v]) => `<span class="badge">${k} ${v}</span>`).join('');
+
+  $('jobs').innerHTML = s.jobs.length ? s.jobs.slice().reverse().map(j => `
+    <div class="job">
+      <div class="job-top">
+        <span class="job-id">#${j.id}</span>
+        <span class="status ${j.status}">${j.status}</span>
+        <span class="job-name">${esc(j.name || j.batch)}</span>
+        <span class="job-btns">
+          ${j.status === 'failed' || j.status === 'done' ? `<button onclick="post('/api/jobs/${j.id}/retry')">Retry</button>` : ''}
+          ${j.status !== 'running' ? `<button class="danger" title="Remove" aria-label="Remove clip ${j.id}" onclick="fetch('/api/jobs/${j.id}',{method:'DELETE'})">✕</button>` : ''}
+        </span>
+      </div>
+      <div class="prompt">${esc(j.prompt)}</div>
+      ${(j.refs || []).length ? `<div class="refs">References: ${j.refs.map(r => esc(base(r))).join(', ')}</div>` : ''}
+      ${j.note ? `<div class="note">${esc(j.note)}</div>` : ''}
+      ${j.files?.length ? `<div class="clips">${j.files.map(f => `<a href="/downloads/${encodeURIComponent(f)}" target="_blank"><video src="/downloads/${encodeURIComponent(f)}" muted loop playsinline onmouseover="this.play()" onmouseout="this.pause()"></video></a>`).join('')}</div>` : ''}
+    </div>`).join('') : '<div class="empty">Nothing queued yet. Ask Claude to make clips, or add them here.</div>';
+
+  const log = $('log'); const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 10;
+  log.textContent = s.log.join('\n'); if (atBottom) log.scrollTop = log.scrollHeight;
+
+  if (!settingsLoaded) { fillSettings(s.settings); settingsLoaded = true; }
+}
+
+new EventSource('/api/events').onmessage = e => render(JSON.parse(e.data));
+setInterval(() => last && last.waitingUntil && render(last), 1000);
+
+$('addJobs').onclick = async () => {
+  const fd = new FormData();
+  fd.append('prompts', $('prompts').value);
+  fd.append('batch', $('batch').value);
+  fd.append('splitLines', $('splitLines').checked ? '1' : '0');
+  for (const f of $('images').files) fd.append('images', f);
+  const r = await fetch('/api/jobs', { method: 'POST', body: fd }).then(r => r.json());
+  $('addHint').textContent = r.error || (r.added ? `Added ${r.added} clip(s). Press Start when ready.` : 'No prompts found.');
+  if (r.added) { $('prompts').value = ''; $('images').value = ''; }
+};
+$('saveSettings').onclick = async () => {
+  const body = {};
+  for (const k of FIELDS) body[k] = $(k).value;
+  for (const k of CHECKS) body[k] = $(k).checked;
+  const r = await post('/api/settings', body);
+  fillSettings(r.settings);
+  $('settingsHint').textContent = r.rejected?.length ? `Not saved (check these): ${r.rejected.join(', ')}` : 'Saved.';
+};
+$('resetSettings').onclick = async () => { fillSettings(await post('/api/settings/reset')); $('settingsHint').textContent = 'Starting values restored (project kept).'; };
+$('useProject').onclick = async () => {
+  const r = await post('/api/settings/use-open-project');
+  if (r.projectUrl) $('projectUrl').value = r.projectUrl;
+  $('settingsHint').textContent = r.error || 'Project set.';
+};
+$('start').onclick = () => post('/api/run/start');
+$('skip').onclick = () => post('/api/run/skip-wait');
+$('stop').onclick = () => post('/api/run/stop');
+$('clearDone').onclick = () => post('/api/jobs/clear', { which: 'done' });
+$('openChrome').onclick = async () => { const r = await post('/api/chrome/launch'); if (r.error) alert(r.error); };
+$('checkFlow').onclick = () => post('/api/flow/check');
+$('openDownloads').onclick = () => post('/api/open-downloads');
+</script>
+</body>
+</html>

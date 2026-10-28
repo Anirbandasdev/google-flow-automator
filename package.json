@@ -1,0 +1,31 @@
+{
+  "name": "flow-automator",
+  "version": "1.1.0",
+  "description": "Make Google Flow video clips by asking Claude: an MCP server plus a local queue that drives your signed-in Flow tab",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js --open",
+    "serve": "node server.js",
+    "mcp": "node mcp/server.js",
+    "setup": "node setup.js",
+    "probe": "node probe.js"
+  },
+  "keywords": [
+    "google-flow",
+    "veo",
+    "mcp",
+    "claude",
+    "automation"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "playwright-core": "^1.58.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
