@@ -20,7 +20,8 @@ try {
   if (fs.existsSync(desktopCfg)) {
     const raw = fs.readFileSync(desktopCfg, 'utf8');
     cfg = raw.trim() ? JSON.parse(raw) : {};
-    fs.copyFileSync(desktopCfg, `${desktopCfg}.before-flow-automator`);
+    // keep the very first backup: running setup again must not overwrite it
+    if (!fs.existsSync(`${desktopCfg}.before-flow-automator`)) fs.copyFileSync(desktopCfg, `${desktopCfg}.before-flow-automator`);
   } else fs.mkdirSync(desktopDir, { recursive: true });
   cfg.mcpServers = { ...(cfg.mcpServers || {}), [NAME]: entry };
   fs.writeFileSync(desktopCfg, JSON.stringify(cfg, null, 2));
